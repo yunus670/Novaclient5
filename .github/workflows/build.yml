@@ -1,0 +1,71 @@
+name: Build NovaClient
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Locate and Build Project
+        run: |
+          echo "=== REPO DOSYA LISTESI ==="
+          find . -maxdepth 3 -not -path "*/.*"
+          
+          # build.gradle dosyasını nerede olursa olsun bulur
+          BUILD_FILE=$(find . -name "build.gradle" -not -path "*/.*/*" | head -n 1)
+          
+          if [ -z "$BUILD_FILE" ]; then
+            echo "HATA: Depoda hiçbir yerde build.gradle bulunamadı!"
+            exit 1
+          fi
+          
+          PROJECT_DIR=$(dirname "$BUILD_FILE")
+          echo "Bulunan proje dizini: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          
+          # gradlew varsa çalıştır, yoksa sistem gradle ile derle
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew build --no-daemon --stacktrace
+          else
+            gradle build --no-daemon --stacktrace
+          fi
+
+      - name: Prepare NovaClient.jar
+        shell: bash
+        run: |
+          mkdir -p release
+          JAR=$(find . -name "*.jar" -not -path "*/build/libs/*-sources.jar" -not -path "*/build/libs/*-dev.jar" -not -path "*/.gradle/*" | grep "build/libs" | head -n 1)
+
+          if [ -z "$JAR" ]; then
+            echo "Error: No mod JAR was generated."
+            exit 1
+          fi
+
+          cp "$JAR" release/NovaClient.jar
+          echo "Successfully found and copied: $JAR to release/NovaClient.jar"
+
+      - name: Upload NovaClient.jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaClient
+          path: release/NovaClient.jar
+          if-no-files-found: error
+          
